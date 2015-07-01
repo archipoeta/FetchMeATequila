@@ -22,7 +22,7 @@ GetOptions(
 	'd|dir=s' => \$dest,
 	'f=s' => \$schema,
 	'h|help!' => \$help,
-	'v!' => \$verbose,
+	'v|verbose!' => \$verbose,
 );
 
 usage() if ($help);
