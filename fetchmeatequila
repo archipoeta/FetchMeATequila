@@ -1,0 +1,190 @@
+#!/usr/bin/perl -w
+
+# Ben Kenobi was here.
+
+use strict;
+use Digest::MD5;
+use File::Basename;
+use File::Fetch;
+use Getopt::Long;
+eval 'use XML::Simple';
+if ( $@ ) {
+	die "This script requires XML::Simple, which requires libexpat: Please see the README or --help for more info!\n";
+}
+
+my $name = "FetchMeATequila";
+my $version = '0.0.1';
+
+my ($help,$dest,$verbose);
+my $schema = "http://dl.dropboxusercontent.com/u/37952257/Tequila/manifest.xml";
+
+GetOptions(
+	'd|dir=s' => \$dest,
+	'f=s' => \$schema,
+	'h|help!' => \$help,
+	'v!' => \$verbose,
+);
+
+usage() if ($help);
+
+my %completed;
+my $errors = 0;
+my @failed;
+
+$dest = '.' unless ( $dest );
+
+my $f = File::Fetch->new( uri => $schema );
+my $path = $f->fetch( to => $dest ) or die $f->error;
+my $xml = XMLin($path);
+
+print "$name ($version) : Starting Up.\n";
+
+foreach my $gamefile ( keys %{ $xml->{'filelist'}->{'file'} } ) {
+	print " * Attempting to download: $gamefile ";
+
+	if ( $verbose ) {
+		print "\n";
+	} else {
+		print ".";
+	}
+
+	$completed{$gamefile} = 0;
+
+	my $path = $dest . '/' . basename($gamefile);
+	my $data = $xml->{'filelist'}->{'file'}->{$gamefile};
+	my $size = $data->{'size'};
+	my $hash = $data->{'md5'};
+
+	# Don't re-download the file
+	# if it hasn't changed from the one we have
+	if ( -f $path ) {
+		my $h = Digest::MD5->new();
+
+		open(my$f, "<", $path );
+			$h->addfile($f);
+		close($f);
+
+		my $this_hash = $h->hexdigest();
+		my $this_size = (stat($path))[7];
+
+		# clear the md5digest body
+		$h->reset();
+
+		if ( $hash eq $this_hash && $size eq $this_size) {
+			if ( $verbose ) {
+				print " + OK\n";
+			} else {
+				print ". OK\n";
+			}
+			$completed{$gamefile} = 1;
+			next;
+		}
+	}
+
+	my $urls = $data->{'url'};
+	# Randomize the list of mirror URLs, @leandro
+	fyshuffle($urls);
+
+	foreach my $uri ( @{ $urls } ) {
+		my $this_file = File::Fetch->new( uri => $uri );
+		my $this_path = $this_file->fetch( to => $dest ) or warn $this_file->error;
+
+		# Did we get a file?
+		if ( $this_path && -f $this_path ) {
+			my $h = Digest::MD5->new();
+
+			# Hash the contents & get the size
+			open(my$f, "<", $this_path );
+				$h->addfile($f);
+			close($f);
+
+			my $this_hash = $h->hexdigest();
+			my $this_size = (stat($this_path))[7];
+
+			# clear the md5digest body
+			$h->reset();
+
+			# Validate the file we got, otherwise
+			# we use another mirror to try grabbing it again.
+			if ( $hash eq $this_hash && $size eq $this_size) {
+				if ( $verbose ) {
+					print " + OK\n";
+				} else {
+					print ". OK\n";
+				}
+				$completed{$gamefile} = 1;
+				last;
+			}
+
+			if ( $verbose ) {
+				print " - Trying another mirror.\n";
+			} else {
+				print ".";
+			}
+
+		} else {
+			if ( $verbose ) {
+				print " - Trying another mirror.\n";
+			} else {
+				print ".";
+			}
+		}
+	}
+
+	# We tried all the mirrors, and still couldn't get it
+	if ( $completed{$gamefile} == 0 ) {
+		if ( $verbose ) {
+			print " ERROR - Unable to download $gamefile, perhaps there are network issues?\n";
+		} else {
+			print ". FAIL\n";
+		}
+		push(@failed, $gamefile);
+		$errors++;
+	}
+}
+
+# Are we cool?
+unless ( $errors ) {
+	print "Done. :)\n";
+} else {
+	print "Finished, but with errors.\n";
+	print "We were unable to download the following files: \n";
+	print $_ . "\n" for (@failed);
+}
+
+# The Fisher-Yates Shuffle
+# https://en.wikipedia.org/wiki/Fisher%E2%80%93Yates_shuffle
+sub fyshuffle {
+	my $deck = shift;
+	my $i = @$deck;
+	while ($i--) {
+		my $j = int rand ($i+1);
+		@$deck[$i,$j] = @$deck[$j,$i];
+	}
+}
+
+# Le Help Menu
+sub usage {
+	die "Usage: $0 [OPTIONS]
+
+    This script should be run on new or existing Tequila mirrors, to keep them up to date.
+    Parses a fresh copy of Tequila's manifest.xml, uses random mirrors and compares sizes and hashes:
+    Only downloads if files differ. :)
+
+    It uses perl's XML::Simple, which requires libexpat.
+    On a 64 bit debian based system you may need to install the packages like so:
+
+    # apt-get install lib64expat1 libxml-sax-expat-perl
+    # cpan -i XML::Simple
+
+    [OPTIONS]
+    -f FILE_URL    (Optional) Web path to a FILE in the format of Tequila's manifest.xml
+                   Defaults to: $schema
+
+    -d PATH        (Optional) Destination directory of downloaded files.
+                   Defaults to: CWD
+
+    --verbose      Slightly more verbose, without this the script tries to stay greppable.
+    --help         This menu.
+	\n";
+}
