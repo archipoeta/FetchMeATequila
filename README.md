@@ -29,6 +29,10 @@ On a 64 bit debian based system you may need to install the packages like so:
 
 ## Examples
 A Normal Example:  
+
     # fetchmeatequila -d /www/sites/mirror2.yourdomain.net/files/html/icon
+
 Using a custom manifest, (uncommon):  
+
     # fetchmeatequila -f http://some-other.tequila.url/manifest.xml -d /var/www/html/icon -v
+
