@@ -1,8 +1,9 @@
-#!/usr/bin/perl -w
+#!/usr/bin/env perl
 
 # Ben Kenobi was here.
 
 use strict;
+use warnings;
 use Digest::MD5;
 use File::Basename;
 use File::Fetch;
